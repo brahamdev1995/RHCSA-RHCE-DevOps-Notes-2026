@@ -1,0 +1,756 @@
+Question 1:
+Assume that you forget the root password. Reset the root password for rhcsa9.prac.one. Change it to “password” to gain access to the system.
+
+Answer
+1. Restart the system.
+2. Catch the grub screen.
+3. Stop on your kernel line and press “E” to enter the editing mode.
+4. Find the line that starts with Linux and at the end of that line replace “rhgb quiet” with “rd.break”
+5. Press Ctrl+X
+6. # mount –o remount,rw /sysroot
+7. # chroot /sysroot
+8. # passwd
+9. # touch /.autorelabel
+10. Press “Ctrl+D twice”.
+
+Question 2:
+Set up a Local Yum/DNF Repository using RHEL-8 ISO image mounted on the /opt directory.
+
+Answer
+1. # mount RHEL-8.iso /opt
+2. # cp /opt/media.repo /etc/yum.repos.d/rhel8.repo
+3. # chmod 644 /etc/yum.repos.d/rhel8.repo
+4. # vim etc/yum.repos.d/rhel8.repo
+5. Replace the data in the file with this data:
+[InstallMedia-BaseOS]
+name=RHEL 8 - BaseOS
+metadata_expire=-1
+gpgcheck=0
+enabled=1
+baseurl=file:///opt/BaseOS/
+[InstallMedia-AppStream]
+name=RHEL 8 - AppStream
+metadata_expire=-1
+gpgcheck=0
+enabled=1
+baseurl=file:///opt/AppStream/
+6. :wq
+7. # dnf clean all
+8. # dnf repolist
+Question 3:
+Modify your active network interface configuration to follow the following specifications statically:
+IPV4 – 192.168.1.2/24
+GW – 192.168.1.1
+DNS – 8.8.8.8
+
+Answer
+1. # nmcli connection show --active //To get the running device name. In my case, the device is named "enp0s3"
+2. # nmcli connection modify enp0s3 ipv4.addresses 192.168.1.2/24 //To set the IPV4 address for interface enp0s3
+3. # nmcli connection modify enp0s3 ipv4.gateway 192.168.1.1 //To set the gateway
+4. # nmcli connection modify enp0s3 ipv4.method manual //To inform the interface that it is using manual configuration (not DHCP)
+5. # nmcli connection modify enp0s3 ipv4.dns 8.8.8.8 //To configure DNS
+6. # nmcli connection down enp0s3 && nmcli connection up enp0s3 //To reload the enp0s3 interface configuration
+7. # ip address show enp0s3
+Question 4:
+Add the following secondary IPV4 address statically to your current running interface. Do this in a way that doesn’t compromise your existing settings:
+IPV4 – 10.0.0.5/24
+
+Answer
+1. # nmcli device status
+2. # nmcli connection show --active
+3. # ifconfig //The top data receiving interface will be the current running
+4. # nmcli connection modify enp0s3 +ipv4.addresses “10.0.0.5/24” //You can get the connection-name using the command "#nmcli connection show" it will be under NAME
+5. # nmcli connection reload
+6. # systemctl reboot
+7. # ip address show
+
+Question 5:
+Add the following secondary IPV6 address statically to your current running interface. Do this in a way that doesn’t compromise your existing settings:
+IPV6 – fd01::100/64
+
+Answer
+1. # ip address show
+2. # cd /etc/sysconfig/network-scripts/
+3. # vim ifcfg-enp0s3
+4. Add these lines:
+IPV6INIT=yes
+IPV6_AUTOCONF=no
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+5. :wq
+6. # nmcli connection modify enp0s3 +ipv6.address fd01::100/64
+7. # nmcli connection reload
+8. # systemctl reboot
+9. # ip address show
+Question 6:
+Set the system time to “America/New_York” timezone.
+
+Answer
+1. # timedatectl
+2. # timedatectl list-timezones
+3. # timedatectl list-timezones | grep -o "America/Ne.*"
+4. # timedatectl set-timezone “America/New_York”
+5. # timedatectl
+
+Question 7:
+Ensure NTP sync is configured.
+
+Answer
+1. # timedatectl
+2. # dnf install chrony
+3. # systemctl enable chronyd --now
+4. # vim /etc/chrony.conf            // Or "# cat /etc/chrony.conf" To check the configuration file after installation.
+5. # timedatectl set-ntp true
+6. # timedatectl
+
+Question 8:
+Create a new 2GiB volume group named “myvg”.
+
+Answer
+1. # lsblk
+2. # fdisk –c /dev/sdb
+3. m //For help
+4. p //print the partition table
+5. n //new partition
+6. p //partition type "p" for primary
+7. 1 //partition number
+8. Press Enter to confirm the default first sector
+9. +2GiB //Last sector - Type the required value then press Enter
+10. p //print the partition table
+11. l //List known partition types
+12. t // Change a partition type
+13. 8e //Linux LVM
+14. p //print the partition table
+15. w //Write table to disk and exit
+16. # fdisk –l
+17. # pvcreate /dev/sdb1 //To initialize the physical volumes for use by LVM to be allowed for use in a volume group (VG).
+18. # pvs
+19. # vgcreate myvg /dev/sdb1
+20. # vgs
+
+Question 9:
+Create a 500MiB logical volume named “mylv” inside the “myvg” volume group.
+Answer
+1. # vgs
+2. # lvcreate –n mylv –L 500MiB myvg
+3. # lvs
+4. # vgs
+Question 10:
+The “mylv” logical volume should be formatted with the ext4 filesystem and mount persistently on the /mylv directory.
+
+Answer
+1. # lvs
+2. # mkfs.ext4 /dev/mapper/myvg-mylv
+3. # mkdir /mylv
+4. # vim /etc/fstab
+5. Enter the following line:
+/dev/mapper/myvg-mylv /mylv ext4 defaults 0 0
+6. :wq
+7. # mount –a
+8. # lsblk
+Question 11:
+Extend the ext4 filesystem on “mylv” by 500M.
+
+Answer
+1. # vgs
+2. # lvextend –r –L+500M /dev/mapper/myvg-mylv //-r to resize the file system
+3. # lvs
+Question 12:
+Use the appropriate utility to create a 6T thin provisioned volume "thin_pool".
+
+Answer
+1. # yum install vdo kmod-kvdo –y
+2. # systemctl start vdo
+3. # systemctl enable vdo
+4. # systemctl status vdo
+5. # lsblk
+6. # vdo create --name=vdo1 --device=/dev/sdc --vdoLogicalSize=6.2T --force
+7. # systemctl reboot
+8. # ls –l /dev/mapper/vdo1
+9. # lsblk
+10. # vgcreate vg_thin /dev/mapper/vdo1
+11. # vgs
+12. # lvcreate -L 6T --thinpool thin_pool vg_thin //Creating a Thin Pool
+13. # lvs
+Question 13:
+Using "thin_pool" create a thin volume "thin_vol1" with a size of 1T.
+
+Answer
+1. # lvs
+2. # lvcreate -V 1T --thin -n thin_vol1 vg_thin/thin_pool
+3. # lvs
+
+Question 14:
+Create xfs file system on "thin_vol1", then mount it on /thin_vol1 directory persistently.
+
+Answer
+1. # mkdir /thin_vol1
+2. # mkfs.xfs –K /dev/mapper/vg_thin-thin_vol1 //-K: Do not attempt to discard blocks at mkfs time
+3. # udevadm settle //Watches the udev event queue, and exits if all current events are handled
+4. # blkid | grep vol1
+5. # vim /etc/fstab
+6. Enter the following line:
+/dev/mapper/vg_thin-thin_vol1 /thin_vol1 xfs x-systemd.requires=vdo.service 0 0
+7. :wq
+8. # mount –a
+9. # lsblk
+Question 15:
+Configure a basic web server that displays “Welcome to the webserver!” once connected to it. Ensure the firewall allows the http/https services.
+
+Answer
+1. # dnf install httpd -y //To install Apache Server
+2. # systemctl enable httpd
+3. # systemctl start httpd
+4. # systemctl status httpd
+5. # vim /var/www/html/index.html
+6. Enter “Welcome to the webserver!”
+7. :wq
+8. # systemctl restart httpd
+9. # firewall-cmd --list-all
+10. # firewall-cmd --get-services
+11. # firewall-cmd --zone=public --add-service http --permanent
+12. # firewall-cmd --zone=public --add-service https --permanent
+13. # firewall-cmd --reload
+14. # firewall-cmd --list-all
+15. # curl http://localhost
+Question 16:
+Find all files that are larger than 3MB in the /etc directory and copy them to /find/3mfiles.
+
+Answer
+1. # mkdir -p /find/3mfiles
+2. # find /etc -size +3M -exec cp {} /find/3mfiles/ \;
+Question 17:
+Boot messages should be present (not silenced).
+
+Answer
+1. # vim /etc/default/grub
+2. In “GRUB_CMDLINE_LINUX” line, remove “rhgb quiet”
+3. :wq to save and exit.
+4. # grub2-mkconfig –o /boot/grub2/grub.cfg
+5. # systemctl reboot
+Question 18:
+The script, script.sh, consists of the following lines:
+#!/bin/bash
+echo $2 $1
+Which output will appear if the command, ./script.sh test1 test2, is entered?
+•	 
+script.sh test2
+•	 
+test1 script.sh
+•	 
+test1 test2
+•	 
+test2 test1
+
+Question 19:
+All new users should have a file name “Congrats” in their home folder after account creation.
+•	 
+# touch Congrats /etc/skel
+•	 
+# touch /usr/skel/Congrats
+•	 
+# touch /var/skel/Congrats
+•	 
+# touch /etc/skel/Congrats
+
+
+Question 20:
+All user passwords should expire after 90 days and be at least 8 characters in length.
+
+Answer
+1. # vim /etc/login.defs
+2. Change PASS_MAX_DAYS to 90
+3. Change PASS_MIN_LEN to 8
+4. :wq
+Question 21:
+Create users amr, biko, carlos, and david, then do the following:
+a. amr and biko should be part of the “admins” group as a secondary group. If the group doesn’t already exist, create it.
+b. carlos and david should be part of the “developers” group as a secondary group. If the group doesn’t already exist, create it.
+
+Answer
+1. # useradd amr && useradd biko && useradd carlos && useradd david
+2. # grep admins //etc//group     (only one slash not two)
+3. # groupadd admins
+4. # usermod –G admins amr && usermod –G admins biko
+5. # id amr
+6. # id biko
+7. # grep developers //etc//group   (only one slash not two)
+8. # groupadd developers
+9. # usermod –G developers carlos && usermod –G developers david
+10. # id carlos
+11. # id david
+Question 22:
+Only the owner and the members of the owner group should have access to the “/admins” directory.
+
+Answer
+1. # mkdir /admins
+2. # chmod o-x /admins
+3. # ls –ld /admins
+Question 23:
+Make biko the owner of this directory, and make the admins group the group owner of the “/admins” directory.
+
+Answer
+1. # chown biko:admins /admins/
+2. # ls –ld /admins/
+Question 24:
+Only members of the developers group should have access to the “/developers” directory. Make carlos the owner of this directory. Make the developers group the group owner of the “/developers” directory.
+
+Answer
+1. # mkdir /developers
+2. # ls –ld developers
+3. # chown carlos:developers /developers /
+4. # ls –ld /developers /
+5. # chmod o-x /developers
+Or
+# chmod 770 /developers
+6. # ls –ld /developers /
+Question 25:
+/developers and /admins directories new files should be owned by the group owner and only the file creator should have the permissions to delete their own files.
+
+Answer
+1. # chmod +t,g+s /developers
+2. # ls –ld /developers
+3. # chmod +t,g+s /admins
+4. # ls –ld /admins
+
+Question 26:
+Create a cron job that writes “Get Ready!” to /var/log/messages at 12pm only on weekdays.
+
+Answer
+1. # crontab –e //To edit user's crontab
+2. Enter the insert mode by pressing "I" then type
+00 12 * * 1-5 logger “Get Ready!”
+3. :wq
+4. # crontab –l //To list user's crontab
+Question 27:
+Create a compressed archive file /root/local.tgz for /usr/local.
+
+Answer
+1. # tar -cvzf /root/local.tgz /usr/local
+2. # ls -l /root/local.tgz
+Question 28:
+Create a new 200MB swap partition which takes effect automatically at boot start.
+
+Answer
+1. # free –m //To display the amount of memory in MiB
+2. # fdisk /dev/sdb/
+3. m //For help
+4. n //To add a new partition
+5. p //For primary partition
+6. Press "Enter" to confirm the default partition number
+7. Press Enter to confirm the default First Sector.
+8. +200M //The required partition size
+9. p //To print the partition table
+10. t //To change the partition type
+11. 6 //Select the partition number then press Enter
+12. l //You can enter "l" to list known partition types
+13. 82 //for Linux Swap
+14. p //To print the partition table
+15. w //To write table to disk and exit
+16. # partprobe //To inform the OS of partition table changes
+17. # lsblk
+18. # mkswap /dev/sdb6
+19. # blkid
+20. # vim /etc/fstab
+21. Add this line
+UUID=…………… swap swap defaults 0 0
+22. :wq //Save and exit
+23. # mount –a //mount all filesystems mentioned in fstab
+24. # swapon /dev/sdb6 //To enable /dev/sdb6 for swapping
+25. # free -m //To display the amount of memory in MiB
+26. # lsblk
+Question 29:
+Setup SSH Passwordless root Login in rhcsa9.prac.two.
+
+Answer
+1. # yum update
+2. # yum install openssh-server
+3. # firewall-cmd --list-all
+4. # firewall-cmd --add-service=ssh --zone=public --permanent
+5. # ssh-keygen //Authentication key generation
+6. Press Enter to confirm the key file default location
+7. Press Enter twice to skip entering the passphrase
+8. # ssh-copy-id user@rhcsa9.prac.two //To use locally available keys to authorize logins on a remote machine
+9. Enter the root-password
+10. # ssh root@rhcsa9.prac.two
+Question 30:
+Set the limit for the number of SSH login attempts to two.
+
+Answer
+1. # vim //etc//ssh/sshd_config   (one slash only)
+2. MaxAuthTries 2
+3. :wq
+4. # systemctl restart sshd
+Question 31:
+Install container-tools.
+
+Answer
+1. # dnf update
+2. # dnf install @container-tools –y
+
+Or
+1. # yum update
+2. # yum install @container-tools –y
+Question 32:
+Use podman to search for the official Redis container.
+
+Answer
+# podman search redis --filter=is-official
+Question 33:
+Inspect the Redis image using skopeo.
+
+Answer
+# skopeo inspect docker://docker.io/redis
+Question 34:
+Use podman to pull the Redis image.
+
+Answer
+1. # podman pull docker.io/redis
+2. # podman images
+Question 35:
+Add the tag "myredis" to the "docker.io/library/redis" image.
+
+Answer
+1. # podman tag docker.io/redis myredis
+2. # podman images
+Question 36:
+Set SELinux to “permissive” mode.
+
+Answer
+1. # sestatus Or # getenforce
+//Use the getenforce or sestatus commands to check in which mode SELinux is running.
+2. # vim /etc/selinux/config
+3. Enter this line:
+SELINUX=permissive
+4. :wq
+5. # reboot
+6. # sestatus Or # getenforce
+Question 37:
+Set SELinux Boolean value of container_manage_cgroup to on and make sure it will be persistent across reboots.
+
+Answer
+# setsebool -P container_manage_cgroup on
+//To set SELinux Boolean value of container_manage_cgroup to "on" and "-P" is used to make sure it will be persistent across reboots.
+
+Question 38:
+Run the Redis container using the tagged image in detached mode with name redis and on port 6379:6379
+
+Answer
+1. # podman run –d --name redis –p 6379:6379 localhost/myredis
+//"-d" for detached mode and "-p" To publish a container's port to the host
+2. # podman ps
+
+Question 39:
+Use systemd to control the startup of the Redis podman container.
+
+Answer
+1. # vim /etc/systemd/system/container.redis.service
+2. Add these lines:
+[Unit]
+Description=Redis Podman container
+Wants=syslog.service
+[Service]
+Restart=always
+ExecStart=/usr/bin/podman start -a redis //"-a" To attach container's STDOUT and STDERR
+ExecStop=/usr/bin/podman stop -t 10 redis //"-t" Time to wait before forcibly stopping the container
+[Install]
+WantedBy=multi-user.target
+3. :wq
+4. # systemctl enable container.redis.service --now //To enable and start the redis.service
+5. # systemctl status container.redis.service
+6. # podman top redis
+Question 40:
+Remove myredis container.
+
+Answer
+1. # podman rm –af //"-a" To remove all containers and "-f" To force the removal of running and paused containers
+2. # podman ps //To List the running containers on the system
+Question 41:
+The script, script.sh, consists of the following lines:
+#!/bin/bash
+echo $2 $1
+Which output will appear if the command, ./script.sh test1 test2, is entered?
+•	 
+script.sh test2
+•	 
+script.sh test1
+•	 
+test2 test1
+•	 
+test1 script.sh
+
+Question 42:
+Which of the following commands prints a list of usernames (first column) and their primary group (fourth column) from the //etc//passwd file (one slash only)?
+•	 
+paste -f 1,4 //etc//passwd      (one slash only)
+•	 
+cut -d : -f 1,4 //etc//passwd      (one slash only)
+•	 
+split -c 1,4 //etc//passwd      (one slash only)
+•	 
+fmt -f 1,4 //etc//passwd      (one slash only)
+
+Question 43:
+What command will generate a list of usernames from //etc//passwd (one slash only) along with their login shell?
+•	 
+cut -d: -f1,7 //etc//passwd      (one slash only)
+•	 
+chop -c 1,7 //etc//passwd      (one slash only)
+•	 
+column -s : 1,7 //etc//passwd      (one slash only)
+•	 
+colrm 1,7 //etc//passwd      (one slash only)
+
+Question 44:
+When starting a program with the nice command without any additional parameters, which nice level is set for the resulting process?
+•	 
+-10
+•	 
+0
+•	 
+10
+•	 
+20
+
+Question 45:
+Which command chain will count the number of regular files with the name of sample.txt within /home?
+•	 
+ls -lR /home | grep sample.txt | wc -l
+•	 
+find /home -type f -name sample.txt | wc -l
+•	 
+grep -R sample.txt /home | wc -l
+•	 
+find /home -name sample.txt | wc -l
+Question 46:
+What is the output of the following command?
+echo "Hello World" | tr -d aieou
+•	 
+eoo Hll Wrld
+•	 
+Hello World
+•	 
+eoo
+•	 
+Hll Wrld
+
+Question 46:
+What is the output of the following command?
+echo "Hello World" | tr -d aieou
+•	 
+eoo Hll Wrld
+•	 
+Hello World
+•	 
+eoo
+•	 
+Hll Wrld
+
+Question 48:
+What output will the following command produce?
+seq 1 5 20
+•	 
+1 2 3 4
+•	 
+2 3 4 5
+•	 
+1 5 10 15
+•	 
+1 6 11 16
+
+Question 49:
+Select the command used to Backup rhcsa9.prac.one MBR on “/dev/sda” to “/backup/mbr.img” with step of 512 bytes and copy only 1 block.
+•	 
+# cp if=/dev/sda of=/backup/mbr.img BS=512 C=1
+•	 
+# df if=/dev/sda of=/backup/mbr.img bs=512 count=1
+•	 
+# dd if=/dev/sda of=/backup/mbr.img bs=512 count=1
+•	 
+# scp if=/dev/sda of=/backup/mbr.img bs=512 count=1
+
+Question 50:
+Which of the following characters can be combined with a separator string to read from the current input source until the separator string, which is on a separate line and without any trailing spaces, is reached?
+•	 
+&<
+•	 
+<<
+•	 
+!<
+•	 
+<|
+
+Question 51:
+Configure automount to automatically mount the users tom and sam home directories as required: rhcsa.server.com uses NFS for the home directory shared with your system. This file system has a home directory preset for the users tom and sam.
+
+The home directories of tom and sam are:
+rhcsa.server.com/home/tom
+rhcsa.server.com/home/sam
+
+The users uid:
+The user tom uid is 1010
+The user sam uid is 1020
+
+The users tom and sam home directories should automatically mount to the local /home directory. Read and write permissions must be available to the users.
+
+Answer
+1. # yum update –y
+2. # yum install autofs –y
+3. # systemctl enable --now autofs
+4. # showmount –e rhcsa.server.com //To list the available network shares “server exports“ in the rhcsa.server.com NFS server
+5. # useradd –M –u 1010 tom // -M (Do not create the user’s home directory), -u (To set the user ID uid of the new account)
+// Note: the uid on the client must be the same as on the server.
+6. # useradd –M –u 1020 sam
+7. # vim /etc/auto.master // The default primary configuration file (master map)
+8. Add:
+/home /etc/auto.home // The master map format is: mount-point (the autofs mount point) map-name (map source file) options (optional)
+9. :wq
+10. # vim /etc/auto.home // The map file format is: mount-point options location
+11. Add:
+* -rw,sync server:/home/& // rw (read-write), sync (NFS server does not respond to requests until after changes to persistent storage have been committed)
+12. :wq
+13. # systemctl restart autofs Or # systemctl reload autofs
+14. # su – tom
+15. # pwd
+16. # su – sam
+17. # pwd
+
+Question 52:
+Setup SSH Passwordless root Login in rhcsa9.prac.two.
+
+Answer:
+1. # yum update
+..................................................................
+3. # firewall-cmd --list-all
+4. # firewall-cmd --add-service=ssh --zone=public --permanent
+.........................................
+6. Press Enter to confirm the key file default location
+7. Press Enter twice to skip entering the passphrase
+8. # ssh-copy-id root@rhcsa9.prac.two
+9. Enter the root-password
+10. # ssh root@rhcsa9.prac.two
+•	 
+2. # yum install openssh-server
+•	 
+2. # yum install ssh-server
+•	 
+2. # yum install openssh
+•	 
+2. # yum install opensshd-server
+•	 
+5. # ssh-keyscan
+•	 
+5. # ssh-agent
+•	 
+5. # ssh-keygen
+•	 
+5. # ssh-server
+
+
+Question 53:
+Set SELinux to “permissive” mode.
+
+Answer
+1. getenforce
+..........................................
+3. Enter this line:
+..........................................
+4. :wq
+.........................................
+6. # getenforce
+•	 
+2. # vim /etc/selinux/config
+•	 
+2. # vim /etc/sestatus/config
+•	 
+2. # vim /etc/selinux.config
+•	 
+2. # vim /etc/sestatus.config
+•	 
+SELINUX=permissive
+•	 
+SESTATUS=permissive
+•	 
+SETYPE=permissive
+•	 
+SEMODE=permissive
+•	 
+5. # reboot
+•	 
+5. # reload
+•	 
+5. # poweroff
+•	 
+5. # firewall-cmd --reload
+
+
+Question 54:
+As the user sam, using the "registry.redhat.io" registry, create a rootless Apache HTTP web server container in detached mode with tag "httpd-24" and name "httpd".
+- Register credentials: username "admin", and the password "administrator".
+- Create "~/www-data/" directory and mount it as persistent storage to the container "/var/www/" directory. Create an "index.html" file containing "Hello World!" in the "~/www-data/" directory.
+- Map the port 8080 on the host to port 8080 on the container. Declare the environment variables, HTTPD_USER and HTTPD_PASSWORD, and use "test" as their values.
+- Use systemd to take control of the httpd container as a service and make sure it persists through reboots.
+
+Answer
+1- Verifying that the container-tools module was installed.
+# yum module install container-tools -y
+2- If you will create the user, you will enter
+# useradd sam
+# passwd xxxxxx
+3- Connect to the user:
+$ ssh sam@localhost
+4- Login to the image registry:
+$ podman login registry.redhat.io
+Username: admin
+Password: administrator
+5- Inspect the httpd image
+$ skopeo inspect docker://registry.redhat.io/rhel8/httpd
+6- Pull the image on your system.
+$ podman pull registry.redhat.io/rhel8/httpd
+7- Tag "httpd-24" to the "registry.redhat.io/rhel8/httpd" image
+$ podman tag registry.redhat.io/rhel8/httpd httpd-24
+8- Create the "www-data" directory
+$ mkdir ~/www-data
+9- Create index.html file
+$ echo "Hello World" > ~/www-data/index.html
+10- Run the httpd container:
+$ podman run -d --name httpd -p 127.0.0.1:8080:8080 -e HTTPD_USER=test -e HTTPD_PASSWORD=test -v ~/www-data:/var/www/html/:Z localhost/httpd-24
+11- Verify the container has been created:
+$ podman ps
+12- Verifying that the data can be transferred from the specified storage on the container with the forwarded port.
+$ curl http://localhost:8080
+13- To define a user service we need to create the systemd user units directory. Then work inside this directory:
+$ mkdir -p ~/.config/systemd/user && cd ~/.config/systemd/user
+14- Create the systemd unit files to manage the container
+$ podman generate systemd -f -n httpd --new
+
+Note: The previous command generated a systemd unit file named container-httpd.service.
+
+15- Verifying that the "container-httpd.service" systemd unit file is generated:
+$ ls
+16- The systemd user instance is killed after the last session for the user is closed. The systemd user instance can be kept running even after the user logs out by enabling lingering using
+$ loginctl enable-linger sam
+17- Verify that linger is enabled for the user max
+$ loginctl show-user sam
+18- Stop the httpd container
+$ podman stop httpd
+19- Remove the httpd container
+$ podman rm httpd
+20- Verifying that the httpd container is removed
+$ podman ps -a
+21- Reload systemd manager configuration:
+$ systemctl --user daemon-reload
+22- Enable the service container.service and start it:
+$ systemctl --user enable --now container-httpd.service
+23- Check the status of the service:
+$ systemctl --user status container-httpd.service
+24- Verify the container has been created:
+$ podman ps
+25- Stop the httpd container then reboot the system to verify that the container is persistent
+$ systemctl --user stop container-httpd.service
+26- Reboot the system
+$ sudo reboot
+27- Verify that the container is running
+$ podman ps
+$ curl http://localhost:8080
+
